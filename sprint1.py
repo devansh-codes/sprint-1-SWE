@@ -61,7 +61,7 @@ class GameBoard:
         self.inner_board = [[None for _ in range(5)] for _ in range(5)]
         self.outer_ring = [None] * 24
         self.level = 1
-        
+
         # Place number 1
         if random_start or self.first_number_pos is None:
             row = random.randint(0, 4)
@@ -69,7 +69,7 @@ class GameBoard:
             self.first_number_pos = (row, col)
         else:
             row, col = self.first_number_pos
-        
+
         self.inner_board[row][col] = 1
         self.next_number = 2
         self.score = 0
@@ -240,7 +240,8 @@ class GameBoard:
     def clear_board(self, random_restart=True):
         """Clear the board for restart."""
         if self.level == 1:
-            self.initialize_level_1(random_restart)
+            # Always keep number 1 in the same original square when clearing
+            self.initialize_level_1(random_start=False)
         else:  # Level 2
             self.initialize_level_2()
     
