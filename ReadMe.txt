@@ -1,0 +1,109 @@
+5x5 Matrix Game - Sprint 1
+
+Game Files
+-----
+sprint1.py - The main game file with everything in it
+  - GameBoard class: handles the game logic and rules
+  - Button class: for the UI buttons
+  - SoundManager class: makes the beep sounds
+  - GameGUI class: draws everything and handles clicks
+
+
+User Stories
+---------------------------
+1. GUI window - you click on cells instead of typing coordinates
+2. Sound effects - beeps when you place numbers or make mistakes
+3. Shows the next number - so you don't have to remember
+4. Clear button - restart if you mess up
+5. Undo button - go back as many moves as you want
+6. Error sounds - different beep for invalid moves
+7. Game logging - saves your completed games to a JSON file
+8. Level 2 - outer ring 
+
+
+What You Need
+-------------
+- Python 3.8 or higher
+- pygame library
+- numpy library for sounds
+
+How to Install
+--------------
+1. Make sure you have Python installed
+
+2. Install the libraries:
+   pip install pygame numpy
+
+   (or pip3 if that's what works on your system)
+
+
+How to Run
+----------
+Just run:
+   python3 sprint1.py
+
+
+How to Play
+-----------
+Level 1:
+- The game starts with 1 already placed randomly
+- Click on cells next to the last number to place 2, 3, 4, etc.
+- Numbers must be adjacent (including diagonally)
+- Get +1 point for diagonal placements
+- Fill all 25 cells to beat Level 1
+
+Level 2:
+- Click the "Level 2" button after beating Level 1
+- Now place numbers 2-25 on the outer ring
+- Where you can place depends on where that number is on the inner board
+- Basically row/column ends, plus corners if it's on a diagonal
+- Fill all 24 outer cells to beat Level 2
+
+Buttons:
+- New Game: starts over
+- Clear: clears the current level
+- Undo: removes your last move
+- Level 2: activates Level 2 after you beat Level 1
+
+
+Scoring
+-------
+Level 1: +1 point each time you place diagonally
+Level 2: validation based on inner board position
+
+
+Output
+------
+When you finish a level, it saves to game_log.json with:
+- Your name (currently just "Player")
+- Date and time
+- Which level
+- Your score
+- The full board
+
+
+If Something Breaks
+-------------------
+- No sound? You probably don't have numpy installed
+- pygame won't install? Try: pip install --upgrade pip first
+- On Linux you might need: sudo apt-get install python3-pygame
+
+
+What we Used
+-----------
+- Python 3.9
+- Pygame for the GUI
+- numpy for sound generation
+- JSON for saving games
+- VS Code for editing
+
+
+Files in this folder:
+--------------------
+Proj1/
+  sprint1.py         - the actual game
+  ReadMe.txt         - this file
+  game_log.json      - saved games (appears after you beat a level)
+  QUICK_START.txt    - shorter instructions
+  USER_STORIES_IMPLEMENTATION.txt - detailed implementation notes
+
