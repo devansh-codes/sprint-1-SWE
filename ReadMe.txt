@@ -3,6 +3,8 @@
 Game Files
 -----
 sprint1.py - The main game file with everything in it
+  - AuthManager class: handles player registration and login
+  - LoginScreen class: the login/register screen shown at startup
   - GameBoard class: handles the game logic and rules
   - Button class: for the UI buttons
   - SoundManager class: makes the beep sounds
@@ -18,7 +20,8 @@ User Stories
 5. Undo button - go back as many moves as you want
 6. Error sounds - different beep for invalid moves
 7. Game logging - saves your completed games to a JSON file
-8. Level 2 - outer ring 
+8. Level 2 - outer ring
+14. Authentication - players must register and log in before playing
 
 
 What You Need
@@ -39,12 +42,19 @@ How to Install
 
 How to Run
 ----------
-Just run:
+run:
    python3 sprint1.py
 
 
 How to Play
 -----------
+Login / Register:
+- When you launch the game a login screen appears
+- New players: type a username and password, then click Register
+- Returning players: type your credentials and click Login (or press Enter)
+- You cannot access the game without logging in first
+- Credentials are saved in users.json (passwords are hashed)
+
 Level 1:
 - The game starts with 1 already placed randomly
 - Click on cells next to the last number to place 2, 3, 4, etc.
@@ -75,7 +85,7 @@ Level 2: validation based on inner board position
 Output
 ------
 When you finish a level, it saves to game_log.json with:
-- Your name (currently just "Player")
+- Your name (from login)
 - Date and time
 - Which level
 - Your score
@@ -103,6 +113,7 @@ Files in this folder:
 Proj1/
   sprint1.py         - the actual game
   ReadMe.txt         - this file
+  users.json         - registered player accounts (appears after first registration)
   game_log.json      - saved games (appears after you beat a level)
   QUICK_START.txt    - shorter instructions
   USER_STORIES_IMPLEMENTATION.txt - detailed implementation notes

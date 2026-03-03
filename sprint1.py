@@ -5,6 +5,7 @@ Sprint 1 - 5x5 Matrix Game with GUI
 import pygame
 import sys
 import random
+import hashlib
 from datetime import datetime
 from typing import Optional, Tuple, List
 import json
@@ -39,6 +40,50 @@ GREEN = (144, 238, 144)
 RED = (255, 99, 71)
 YELLOW = (255, 255, 153)
 DARK_GRAY = (100, 100, 100)
+
+
+class AuthManager:
+    """Handles player registration and authentication."""
+
+    USERS_FILE = Path("users.json")
+
+    def _hash_password(self, password: str) -> str:
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    def _load_users(self) -> dict:
+        if self.USERS_FILE.exists():
+            with open(self.USERS_FILE, 'r') as f:
+                try:
+                    return json.load(f)
+                except json.JSONDecodeError:
+                    return {}
+        return {}
+
+    def _save_users(self, users: dict):
+        with open(self.USERS_FILE, 'w') as f:
+            json.dump(users, f, indent=2)
+
+    def register(self, username: str, password: str) -> Tuple[bool, str]:
+        """Register a new player. Returns (success, message)."""
+        if not username.strip() or not password:
+            return False, "Username and password cannot be empty."
+        users = self._load_users()
+        if username in users:
+            return False, "Username already exists. Please log in."
+        users[username] = self._hash_password(password)
+        self._save_users(users)
+        return True, "Registration successful! You can now log in."
+
+    def login(self, username: str, password: str) -> Tuple[bool, str]:
+        """Authenticate a player. Returns (success, message)."""
+        if not username.strip() or not password:
+            return False, "Username and password cannot be empty."
+        users = self._load_users()
+        if username not in users:
+            return False, "Username not found. Please register first."
+        if users[username] != self._hash_password(password):
+            return False, "Incorrect password."
+        return True, f"Welcome, {username}!"
 
 
 class GameBoard:
@@ -385,6 +430,118 @@ class SoundManager:
             self.success_sound.play()
 
 
+class LoginScreen:
+    """Login and registration screen shown before the game starts."""
+
+    def __init__(self, screen, clock):
+        self.screen = screen
+        self.clock = clock
+        self.auth = AuthManager()
+
+        self.font_large = pygame.font.Font(None, 48)
+        self.font_medium = pygame.font.Font(None, 36)
+        self.font_small = pygame.font.Font(None, 28)
+
+        cx = WINDOW_WIDTH // 2
+        self.username_rect = pygame.Rect(cx - 150, 280, 300, 40)
+        self.password_rect = pygame.Rect(cx - 150, 360, 300, 40)
+
+        self.login_btn = Button(cx - 160, 430, 140, 40, "Login", GREEN)
+        self.register_btn = Button(cx + 20, 430, 140, 40, "Register", BLUE)
+
+        self.username = ""
+        self.password = ""
+        self.active_field = "username"  # "username" or "password"
+        self.message = "Log in or register to play."
+        self.message_color = BLACK
+
+    def draw(self):
+        self.screen.fill(WHITE)
+
+        title = self.font_large.render("5x5 Matrix Game", True, BLACK)
+        self.screen.blit(title, title.get_rect(center=(WINDOW_WIDTH // 2, 100)))
+
+        subtitle = self.font_medium.render("Player Login", True, DARK_GRAY)
+        self.screen.blit(subtitle, subtitle.get_rect(center=(WINDOW_WIDTH // 2, 155)))
+
+        # Username field
+        u_label = self.font_small.render("Username:", True, BLACK)
+        self.screen.blit(u_label, (WINDOW_WIDTH // 2 - 150, 255))
+        u_border = BLUE if self.active_field == "username" else GRAY
+        pygame.draw.rect(self.screen, WHITE, self.username_rect)
+        pygame.draw.rect(self.screen, u_border, self.username_rect, 2)
+        u_text = self.font_small.render(self.username, True, BLACK)
+        self.screen.blit(u_text, (self.username_rect.x + 8, self.username_rect.y + 10))
+
+        # Password field
+        p_label = self.font_small.render("Password:", True, BLACK)
+        self.screen.blit(p_label, (WINDOW_WIDTH // 2 - 150, 335))
+        p_border = BLUE if self.active_field == "password" else GRAY
+        pygame.draw.rect(self.screen, WHITE, self.password_rect)
+        pygame.draw.rect(self.screen, p_border, self.password_rect, 2)
+        p_text = self.font_small.render("*" * len(self.password), True, BLACK)
+        self.screen.blit(p_text, (self.password_rect.x + 8, self.password_rect.y + 10))
+
+        self.login_btn.draw(self.screen, self.font_small)
+        self.register_btn.draw(self.screen, self.font_small)
+
+        msg = self.font_small.render(self.message, True, self.message_color)
+        self.screen.blit(msg, msg.get_rect(center=(WINDOW_WIDTH // 2, 510)))
+
+        pygame.display.flip()
+
+    def run(self) -> Optional[str]:
+        """Run the login screen. Returns authenticated username, or exits on quit."""
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.MOUSEMOTION:
+                    self.login_btn.handle_event(event)
+                    self.register_btn.handle_event(event)
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.username_rect.collidepoint(event.pos):
+                        self.active_field = "username"
+                    elif self.password_rect.collidepoint(event.pos):
+                        self.active_field = "password"
+                    elif self.login_btn.rect.collidepoint(event.pos):
+                        success, msg = self.auth.login(self.username, self.password)
+                        self.message = msg
+                        self.message_color = GREEN if success else RED
+                        if success:
+                            return self.username
+                    elif self.register_btn.rect.collidepoint(event.pos):
+                        success, msg = self.auth.register(self.username, self.password)
+                        self.message = msg
+                        self.message_color = GREEN if success else RED
+
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_TAB:
+                        self.active_field = "password" if self.active_field == "username" else "username"
+                    elif event.key == pygame.K_RETURN:
+                        success, msg = self.auth.login(self.username, self.password)
+                        self.message = msg
+                        self.message_color = GREEN if success else RED
+                        if success:
+                            return self.username
+                    elif event.key == pygame.K_BACKSPACE:
+                        if self.active_field == "username":
+                            self.username = self.username[:-1]
+                        else:
+                            self.password = self.password[:-1]
+                    else:
+                        if self.active_field == "username":
+                            self.username += event.unicode
+                        else:
+                            self.password += event.unicode
+
+            self.draw()
+            self.clock.tick(60)
+
+
 class GameGUI:
     """Main game GUI using Pygame."""
     
@@ -696,7 +853,16 @@ class GameGUI:
 
 def main():
     """Entry point for the game."""
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption("5x5 Matrix Game - Sprint 1")
+    clock = pygame.time.Clock()
+
+    login = LoginScreen(screen, clock)
+    player_name = login.run()
+
     game = GameGUI()
+    game.game_board.player_name = player_name
+    game.message = f"Welcome, {player_name}! Click on a cell to place numbers."
     game.run()
 
 
