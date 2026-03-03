@@ -5,6 +5,7 @@ Game Files
 sprint1.py - The main game file with everything in it
   - AuthManager class: handles player registration and login
   - LoginScreen class: the login/register screen shown at startup
+  - TimeLimitScreen class: the time limit setup screen shown before each level
   - GameBoard class: handles the game logic and rules
   - Button class: for the UI buttons
   - SoundManager class: makes the beep sounds
@@ -21,6 +22,7 @@ User Stories
 6. Error sounds - different beep for invalid moves
 7. Game logging - saves your completed games to a JSON file
 8. Level 2 - outer ring
+11. Time limit - set a time limit per level with bonus/penalty scoring
 14. Authentication - players must register and log in before playing
 
 
@@ -55,6 +57,14 @@ Login / Register:
 - You cannot access the game without logging in first
 - Credentials are saved in users.json (passwords are hashed)
 
+Time Limit (Level 1):
+- After logging in, a time limit screen appears for Level 1
+- Enter any number of seconds (e.g. 30, 60, 80) and click Start Game
+- Click No Limit to play without a timer
+- The countdown is shown on the left side of the screen during play
+- Finishing early earns +1 point per unused second
+- Going over costs -1 point per extra second (score floored at 0)
+
 Level 1:
 - The game starts with 1 already placed randomly
 - Click on cells next to the last number to place 2, 3, 4, etc.
@@ -64,6 +74,7 @@ Level 1:
 
 Level 2:
 - Click the "Level 2" button after beating Level 1
+- A time limit screen appears so you can set a separate limit for Level 2
 - Now place numbers 2-25 on the outer ring
 - Where you can place depends on where that number is on the inner board
 - Basically row/column ends, plus corners if it's on a diagonal
@@ -80,6 +91,8 @@ Scoring
 -------
 Level 1: +1 point each time you place diagonally
 Level 2: validation based on inner board position
+Time bonus: +1 point per second remaining when you finish within the limit
+Time penalty: -1 point per second over the limit (score cannot go below 0)
 
 
 Output

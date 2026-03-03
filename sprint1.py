@@ -542,6 +542,99 @@ class LoginScreen:
             self.clock.tick(60)
 
 
+class TimeLimitScreen:
+    """Screen for setting the time limit for a level."""
+
+    def __init__(self, screen, clock, level=1):
+        self.screen = screen
+        self.clock = clock
+        self.level = level
+        self.font_large = pygame.font.Font(None, 48)
+        self.font_medium = pygame.font.Font(None, 36)
+        self.font_small = pygame.font.Font(None, 28)
+
+        cx = WINDOW_WIDTH // 2
+        self.input_rect = pygame.Rect(cx - 80, 315, 160, 44)
+        self.start_btn = Button(cx - 165, 390, 150, 40, "Start Game", GREEN)
+        self.no_limit_btn = Button(cx + 15, 390, 150, 40, "No Limit", BLUE)
+
+        self.input_text = "60"
+        self.message = f"Enter time limit in seconds for Level {level}."
+        self.message_color = DARK_GRAY
+
+    def draw(self):
+        self.screen.fill(WHITE)
+
+        title = self.font_large.render("5x5 Matrix Game", True, BLACK)
+        self.screen.blit(title, title.get_rect(center=(WINDOW_WIDTH // 2, 100)))
+
+        sub = self.font_medium.render(f"Set Time Limit - Level {self.level}", True, DARK_GRAY)
+        self.screen.blit(sub, sub.get_rect(center=(WINDOW_WIDTH // 2, 160)))
+
+        note = self.font_small.render("Finish early = +1 pt/sec bonus. Go over = -1 pt/sec penalty.", True, DARK_GRAY)
+        self.screen.blit(note, note.get_rect(center=(WINDOW_WIDTH // 2, 210)))
+
+        label = self.font_small.render("Seconds (e.g. 30, 60, 80):", True, BLACK)
+        self.screen.blit(label, label.get_rect(center=(WINDOW_WIDTH // 2, 285)))
+
+        pygame.draw.rect(self.screen, WHITE, self.input_rect)
+        pygame.draw.rect(self.screen, BLUE, self.input_rect, 2)
+        inp = self.font_medium.render(self.input_text, True, BLACK)
+        self.screen.blit(inp, inp.get_rect(center=self.input_rect.center))
+
+        self.start_btn.draw(self.screen, self.font_small)
+        self.no_limit_btn.draw(self.screen, self.font_small)
+
+        msg = self.font_small.render(self.message, True, self.message_color)
+        self.screen.blit(msg, msg.get_rect(center=(WINDOW_WIDTH // 2, 460)))
+
+        pygame.display.flip()
+
+    def run(self) -> int:
+        """Returns the time limit in seconds, or 0 for no limit."""
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.MOUSEMOTION:
+                    self.start_btn.handle_event(event)
+                    self.no_limit_btn.handle_event(event)
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.no_limit_btn.rect.collidepoint(event.pos):
+                        return 0
+                    elif self.start_btn.rect.collidepoint(event.pos):
+                        result = self._try_submit()
+                        if result is not None:
+                            return result
+
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RETURN:
+                        result = self._try_submit()
+                        if result is not None:
+                            return result
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.input_text = self.input_text[:-1]
+                    elif event.unicode.isdigit():
+                        self.input_text += event.unicode
+
+            self.draw()
+            self.clock.tick(60)
+
+    def _try_submit(self):
+        try:
+            limit = int(self.input_text) if self.input_text else 0
+            if limit < 0:
+                raise ValueError
+            return limit
+        except ValueError:
+            self.message = "Invalid input. Enter a whole number (0 = no limit)."
+            self.message_color = RED
+        return None
+
+
 class GameGUI:
     """Main game GUI using Pygame."""
     
@@ -566,7 +659,12 @@ class GameGUI:
         self.running = True
         self.message = "Welcome! Click on a cell to place numbers."
         self.message_color = BLACK
-        
+
+        # Timer state
+        self.time_limit = 0          # 0 = no limit
+        self.level_start_ticks = pygame.time.get_ticks()
+        self.level_complete = False
+
         # Initialize game
         self.game_board.initialize_level_1()
         
@@ -659,6 +757,22 @@ class GameGUI:
         player_text = self.font_small.render(f"Player: {self.game_board.player_name}", True, BLACK)
         self.screen.blit(player_text, (30, 250))
 
+        # Timer display (left side)
+        if self.time_limit > 0:
+            if self.level_complete:
+                timer_str = "Time: Done"
+                timer_color = DARK_GRAY
+            else:
+                remaining = self.time_limit - self._get_elapsed_secs()
+                if remaining >= 0:
+                    timer_str = f"Time: {int(remaining)}s"
+                    timer_color = GREEN if remaining > 10 else RED
+                else:
+                    timer_str = f"Overtime: +{int(-remaining)}s"
+                    timer_color = RED
+            timer_text = self.font_medium.render(timer_str, True, timer_color)
+            self.screen.blit(timer_text, (30, 300))
+
         # Message display (well below grid, accounting for Level 2 outer ring)
         # Level 2 outer ring extends to y = GRID_OFFSET_Y + 6 * CELL_SIZE = 510
         msg_text = self.font_small.render(self.message, True, self.message_color)
@@ -694,8 +808,10 @@ class GameGUI:
                             
                             # Check if level is complete
                             if self.game_board.is_level_complete():
+                                self.level_complete = True
+                                time_msg = self._apply_time_score()
                                 self.sound_manager.play_success_sound()
-                                self.message = f"Level 1 Complete! Score: {self.game_board.score}"
+                                self.message = f"Level 1 Complete! Score: {self.game_board.score}{time_msg}"
                                 self.message_color = BLUE
                                 self.game_board.save_game_log()
                             # Check for dead end
@@ -738,8 +854,10 @@ class GameGUI:
                         
                         # Check if level is complete
                         if self.game_board.is_level_complete():
+                            self.level_complete = True
+                            time_msg = self._apply_time_score()
                             self.sound_manager.play_success_sound()
-                            self.message = f"Level 2 Complete! Final Score: {self.game_board.score}"
+                            self.message = f"Level 2 Complete! Final Score: {self.game_board.score}{time_msg}"
                             self.message_color = BLUE
                             self.game_board.save_game_log()
                         # Check for dead end
@@ -752,6 +870,29 @@ class GameGUI:
                         self.message_color = RED
                     return
     
+    def _get_elapsed_secs(self) -> float:
+        """Return seconds elapsed since the current level started."""
+        return (pygame.time.get_ticks() - self.level_start_ticks) / 1000.0
+
+    def _apply_time_score(self) -> str:
+        """Compute time bonus/penalty, apply to score, return display string."""
+        if self.time_limit <= 0:
+            return ""
+        remaining = self.time_limit - self._get_elapsed_secs()
+        if remaining >= 0:
+            bonus = int(remaining)
+            self.game_board.score += bonus
+            return f"  +{bonus}s bonus!"
+        else:
+            penalty = int(-remaining)
+            self.game_board.score = max(0, self.game_board.score - penalty)
+            return f"  -{penalty}s penalty."
+
+    def _reset_timer(self):
+        """Reset the level timer."""
+        self.level_start_ticks = pygame.time.get_ticks()
+        self.level_complete = False
+
     def _get_ring_positions(self):
         """Get list of outer ring cell positions."""
         ring_positions = []
@@ -777,6 +918,7 @@ class GameGUI:
     def handle_new_game(self):
         """Start a new game at Level 1."""
         self.game_board.initialize_level_1(random_start=True)
+        self._reset_timer()
         self.message = "New game started! Place numbers sequentially."
         self.message_color = BLACK
     
@@ -784,7 +926,7 @@ class GameGUI:
         """Clear the board based on current level."""
         # For simplicity, always use random restart for Level 1
         self.game_board.clear_board(random_restart=True)
-        
+        self._reset_timer()
         if self.game_board.level == 1:
             self.message = "Board cleared! Number 1 placed randomly."
         else:
@@ -802,10 +944,13 @@ class GameGUI:
     
     def handle_level_2(self):
         """Activate Level 2."""
-        # Check if Level 1 is complete
         if self.game_board.level == 1:
             if self.game_board.is_level_complete():
+                # Ask for Level 2 time limit before starting
+                tls = TimeLimitScreen(self.screen, self.clock, level=2)
+                self.time_limit = tls.run()
                 self.game_board.initialize_level_2()
+                self._reset_timer()
                 self.message = "Level 2! Place numbers 2-25 on the outer ring (green = valid)."
                 self.message_color = GREEN
             else:
@@ -860,8 +1005,13 @@ def main():
     login = LoginScreen(screen, clock)
     player_name = login.run()
 
+    time_limit_screen = TimeLimitScreen(screen, clock, level=1)
+    time_limit = time_limit_screen.run()
+
     game = GameGUI()
     game.game_board.player_name = player_name
+    game.time_limit = time_limit
+    game._reset_timer()
     game.message = f"Welcome, {player_name}! Click on a cell to place numbers."
     game.run()
 
