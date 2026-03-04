@@ -164,12 +164,19 @@ class GameBoard:
         """Initialize Level 3."""
         self.level = 3
         # Keep outer ring from Level 2, clear inner grid except 1
+        one_pos = None
         for r in range(5):
             for c in range(5):
-                if self.inner_board[r][c] != 1:
+                if self.inner_board[r][c] == 1:
+                    one_pos = (r, c)
+                else:
                     self.inner_board[r][c] = None
         self.next_number = 2
-        self.history = []
+        # Keep number 1 anchored in history so Undo can remove moves 2..25 but never remove 1.
+        if one_pos is not None:
+            self.history = [('inner', one_pos[0], one_pos[1], 1, self.score)]
+        else:
+            self.history = []
         self._clear_solution()
 
     def place_number(self, row: int, col: int, board_type: str = 'inner', ring_idx: int = None) -> Tuple[bool, str]:
@@ -351,23 +358,43 @@ class GameBoard:
         # column ends
         for c in range(5):
             top_end = top[c + 1]          # top indices 1..5 correspond to cols 0..4
-            bottom_end = bottom[4 - c]    # bottom is right->left
+            bottom_end = bottom[5 - c]    # bottom[12+k] is right->left; col c -> index 17-c -> bottom[5-c]
             if top_end == number or bottom_end == number:
                 cols.add(c)
 
-        if not rows or not cols:
-            return []
-
-        corner_numbers = {self.outer_ring[0], self.outer_ring[6], self.outer_ring[12], self.outer_ring[18]}
-        diagonal_required = number in corner_numbers
-
         valid = []
-        for r in rows:
-            for c in cols:
-                if self.inner_board[r][c] is None:
-                    if diagonal_required and not (r == c or r + c == 4):
+        corner_map = {
+            0: "main",
+            6: "anti",
+            12: "main",
+            18: "anti",
+        }
+        corner_diag = None
+        for idx, diag_name in corner_map.items():
+            if self.outer_ring[idx] == number:
+                corner_diag = diag_name
+                break
+
+        # If number is on a corner ring cell, it must be placed on the corresponding long diagonal.
+        if corner_diag is not None:
+            for r in range(5):
+                for c in range(5):
+                    if self.inner_board[r][c] is not None:
                         continue
-                    valid.append((r, c))
+                    if corner_diag == "main" and r == c:
+                        valid.append((r, c))
+                    elif corner_diag == "anti" and r + c == 4:
+                        valid.append((r, c))
+        else:
+            if not rows and not cols:
+                return []
+            # Rule 3: number clue can come from either a row end or a column end.
+            for r in range(5):
+                for c in range(5):
+                    if self.inner_board[r][c] is not None:
+                        continue
+                    if (r in rows) or (c in cols):
+                        valid.append((r, c))
 
         # adjacency to last placed number
         if self.last_position and self.last_position[0] == 'inner':
