@@ -24,6 +24,8 @@ User Stories
 8. Level 2 - outer ring
 11. Time limit - set a time limit per level with bonus/penalty scoring
 14. Authentication - players must register and log in before playing
+15. Hint system - optional button that briefly highlights all valid adjacent moves for the next number in Level 1
+16. Leaderboard - saves top 10 scores (name, score, level, timestamp) and shows them in a Top 10 overlay
 
 
 What You Need
@@ -85,6 +87,8 @@ Buttons:
 - Clear: clears the current level
 - Undo: removes your last move
 - Level 2: activates Level 2 after you beat Level 1
+- Hint: one-time highlight of valid cells for the next move in Level 1
+- Top 10: toggles a leaderboard overlay showing the top 10 scores
 
 
 Scoring
