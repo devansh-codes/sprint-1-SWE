@@ -1,5 +1,15 @@
 """
-Sprint 1 - 5x5 Matrix Game with GUI
+5x5 Matrix Game with GUI - Sprint 2
+
+Module organization (User Story 12 - Code Refactoring):
+  Section 1: Imports and Constants
+  Section 2: Authentication (AuthManager)
+  Section 3: Game Logic (GameBoard) with Solution Solver (User Story 13)
+  Section 4: UI Components (Button)
+  Section 5: Audio (SoundManager)
+  Section 6: Pre-game Screens (LoginScreen, TimeLimitScreen)
+  Section 7: Main Game GUI (GameGUI)
+  Section 8: Entry Point (main)
 """
 
 import pygame
@@ -40,7 +50,12 @@ GREEN = (144, 238, 144)
 RED = (255, 99, 71)
 YELLOW = (255, 255, 153)
 DARK_GRAY = (100, 100, 100)
+ORANGE = (255, 165, 0)  # Used for solution display (User Story 13)
 
+
+# =============================================================================
+# Section 2: Authentication
+# =============================================================================
 
 class AuthManager:
     """Handles player registration and authentication."""
@@ -86,9 +101,13 @@ class AuthManager:
         return True, f"Welcome, {username}!"
 
 
+# =============================================================================
+# Section 3: Game Logic (with Solution Solver - User Story 13)
+# =============================================================================
+
 class GameBoard:
     """Manages the game board state and logic."""
-    
+
     def __init__(self):
         self.level = 1
         self.inner_board = [[None for _ in range(5)] for _ in range(5)]
@@ -99,6 +118,11 @@ class GameBoard:
         self.history = []  # For undo functionality
         self.player_name = "Player"
         self.first_number_pos = None  # Store position of number 1 for Level 1
+
+        # Solution display state (User Story 13)
+        self.solution_cells = set()        # (row, col) auto-filled by solver
+        self.solution_ring_indices = set()  # ring indices auto-filled by solver
+        self.showing_solution = False
         
     def initialize_level_1(self, random_start=True):
         """Initialize Level 1 with number 1 placed randomly or in same position."""
@@ -120,6 +144,7 @@ class GameBoard:
         self.score = 0
         self.last_position = ('inner', row, col)
         self.history = [('inner', row, col, 1, 0)]  # (board_type, row, col, number, score_before)
+        self._clear_solution()
     
     def initialize_level_2(self):
         """Initialize Level 2 by keeping inner board and clearing outer ring."""
@@ -131,6 +156,7 @@ class GameBoard:
         self.next_number = 2
         # Clear history for Level 2
         self.history = []
+        self._clear_solution()
     
     def place_number(self, row: int, col: int, board_type: str = 'inner', ring_idx: int = None) -> Tuple[bool, str]:
         """
@@ -301,7 +327,8 @@ class GameBoard:
                 self.last_position = ('outer', prev_move[1])
         else:
             self.last_position = None
-        
+
+        self._clear_solution()
         return True
     
     def clear_board(self, random_restart=True):
@@ -359,6 +386,195 @@ class GameBoard:
         with open(log_file, 'w') as f:
             json.dump(logs, f, indent=2)
 
+    # ---- User Story 13: Solution Display ----
+
+    def _clear_solution(self):
+        """Clear any displayed solution."""
+        self.solution_cells = set()
+        self.solution_ring_indices = set()
+        self.showing_solution = False
+
+    def solve_and_display(self):
+        """
+        Attempt to find and display a solution for unfinished cells.
+        First tries from current state; if that fails, clears and solves from scratch.
+        Returns (success, message).
+        """
+        self._clear_solution()
+
+        if self.level == 1:
+            return self._solve_level_1()
+        elif self.level == 2:
+            return self._solve_level_2()
+        else:
+            return False, "Solution not available for this level."
+
+    def _solve_level_1(self):
+        """Solve Level 1 using backtracking from the current board state."""
+        if self.is_level_complete():
+            return False, "Level already complete!"
+
+        # Remember which cells the player placed
+        player_cells = set()
+        for r in range(5):
+            for c in range(5):
+                if self.inner_board[r][c] is not None:
+                    player_cells.add((r, c))
+
+        # Try solving from current state
+        board_copy = [row[:] for row in self.inner_board]
+        last_r, last_c = self.last_position[1], self.last_position[2]
+        next_num = self.next_number
+
+        if self._backtrack_level_1(board_copy, last_r, last_c, next_num):
+            # Solution found from current state
+            for r in range(5):
+                for c in range(5):
+                    if (r, c) not in player_cells and board_copy[r][c] is not None:
+                        self.inner_board[r][c] = board_copy[r][c]
+                        self.solution_cells.add((r, c))
+            self.showing_solution = True
+            self.next_number = 26
+            return True, "Solution displayed! Orange cells are auto-filled."
+
+        # No solution from current state - clear and solve from scratch
+        start_r, start_c = self.first_number_pos
+        self.inner_board = [[None for _ in range(5)] for _ in range(5)]
+        self.inner_board[start_r][start_c] = 1
+
+        board_copy = [row[:] for row in self.inner_board]
+        if self._backtrack_level_1(board_copy, start_r, start_c, 2):
+            self.solution_cells = set()
+            for r in range(5):
+                for c in range(5):
+                    self.inner_board[r][c] = board_copy[r][c]
+                    if (r, c) != (start_r, start_c):
+                        self.solution_cells.add((r, c))
+            self.showing_solution = True
+            self.next_number = 26
+            self.score = 0
+            self.history = [('inner', start_r, start_c, 1, 0)]
+            self.last_position = None
+            return True, "No solution from your moves. Board cleared. Full solution in orange."
+
+        return False, "Could not find any solution!"
+
+    def _backtrack_level_1(self, board, last_r, last_c, next_num):
+        """
+        Backtracking solver for Level 1.
+        Uses Warnsdorff's heuristic to prefer cells with fewer onward moves.
+        """
+        if next_num > 25:
+            return True
+
+        neighbors = []
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = last_r + dr, last_c + dc
+                if 0 <= nr < 5 and 0 <= nc < 5 and board[nr][nc] is None:
+                    neighbors.append((nr, nc))
+
+        # Warnsdorff's heuristic: try cells with fewer onward moves first
+        def count_onward(r, c):
+            count = 0
+            for dr2 in [-1, 0, 1]:
+                for dc2 in [-1, 0, 1]:
+                    if dr2 == 0 and dc2 == 0:
+                        continue
+                    nr2, nc2 = r + dr2, c + dc2
+                    if 0 <= nr2 < 5 and 0 <= nc2 < 5 and board[nr2][nc2] is None:
+                        count += 1
+            return count
+
+        neighbors.sort(key=lambda pos: count_onward(pos[0], pos[1]))
+
+        for nr, nc in neighbors:
+            board[nr][nc] = next_num
+            if self._backtrack_level_1(board, nr, nc, next_num + 1):
+                return True
+            board[nr][nc] = None
+
+        return False
+
+    def _solve_level_2(self):
+        """Solve Level 2 using backtracking from the current outer ring state."""
+        if self.is_level_complete():
+            return False, "Level already complete!"
+
+        # Remember which ring cells the player placed
+        player_ring = set()
+        for idx in range(24):
+            if self.outer_ring[idx] is not None:
+                player_ring.add(idx)
+
+        # Try solving from current state
+        ring_copy = self.outer_ring[:]
+        next_num = self.next_number
+
+        if self._backtrack_level_2(ring_copy, next_num):
+            for idx in range(24):
+                if idx not in player_ring and ring_copy[idx] is not None:
+                    self.outer_ring[idx] = ring_copy[idx]
+                    self.solution_ring_indices.add(idx)
+            self.showing_solution = True
+            self.next_number = 26
+            return True, "Solution displayed! Orange cells are auto-filled."
+
+        # No solution from current state - clear and solve from scratch
+        self.outer_ring = [None] * 24
+        ring_copy = [None] * 24
+
+        if self._backtrack_level_2(ring_copy, 2):
+            for idx in range(24):
+                self.outer_ring[idx] = ring_copy[idx]
+                if ring_copy[idx] is not None:
+                    self.solution_ring_indices.add(idx)
+            self.showing_solution = True
+            self.next_number = 26
+            self.score = 0
+            self.history = []
+            return True, "No solution from your moves. Ring cleared. Full solution in orange."
+
+        return False, "Could not find any solution for Level 2!"
+
+    def _backtrack_level_2(self, ring, next_num):
+        """Backtracking solver for Level 2 outer ring placement."""
+        if next_num > 25:
+            return True
+
+        pos = self._find_number_on_inner_board(next_num)
+        if pos is None:
+            return False
+
+        r, c = pos
+        valid = set()
+        valid.add(c + 1)
+        valid.add(7 + r)
+        valid.add(17 - c)
+        valid.add(23 - r)
+        if r == c:
+            valid.add(0)
+            valid.add(12)
+        if r + c == 4:
+            valid.add(6)
+            valid.add(18)
+
+        available = [idx for idx in valid if ring[idx] is None]
+
+        for idx in available:
+            ring[idx] = next_num
+            if self._backtrack_level_2(ring, next_num + 1):
+                return True
+            ring[idx] = None
+
+        return False
+
+
+# =============================================================================
+# Section 4: UI Components
+# =============================================================================
 
 class Button:
     """Simple button UI element."""
@@ -387,6 +603,10 @@ class Button:
                 return True
         return False
 
+
+# =============================================================================
+# Section 5: Audio
+# =============================================================================
 
 class SoundManager:
     """Manages game sounds and audio feedback."""
@@ -451,6 +671,10 @@ class SoundManager:
         if self.enabled and self.success_sound:
             self.success_sound.play()
 
+
+# =============================================================================
+# Section 6: Pre-game Screens
+# =============================================================================
 
 class LoginScreen:
     """Login and registration screen shown before the game starts."""
@@ -657,12 +881,16 @@ class TimeLimitScreen:
         return None
 
 
+# =============================================================================
+# Section 7: Main Game GUI
+# =============================================================================
+
 class GameGUI:
     """Main game GUI using Pygame."""
     
     def __init__(self):
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("5x5 Matrix Game - Sprint 1")
+        pygame.display.set_caption("5x5 Matrix Game - Sprint 2")
         self.clock = pygame.time.Clock()
         
         # Fonts
@@ -700,16 +928,17 @@ class GameGUI:
     def create_buttons(self):
         """Create UI buttons."""
         button_y = WINDOW_HEIGHT - 80
-        spacing = BUTTON_WIDTH + 20
-        # 6 buttons total (New, Clear, Undo, Level 2, Hint, Top 10)
-        start_x = (WINDOW_WIDTH - (spacing * 6 - 20)) // 2
-        
+        spacing = BUTTON_WIDTH + 10
+        # 7 buttons total (New, Clear, Undo, Level 2, Hint, Solution, Top 10)
+        start_x = (WINDOW_WIDTH - (spacing * 7 - 10)) // 2
+
         self.new_game_btn = Button(start_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "New Game", GREEN)
         self.clear_btn = Button(start_x + spacing, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Clear", YELLOW)
         self.undo_btn = Button(start_x + spacing * 2, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Undo", BLUE)
         self.level2_btn = Button(start_x + spacing * 3, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 2", RED)
         self.hint_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Hint", BLUE)
-        self.leaderboard_btn = Button(start_x + spacing * 5, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
+        self.solution_btn = Button(start_x + spacing * 5, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Solution", ORANGE)
+        self.leaderboard_btn = Button(start_x + spacing * 6, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
         
     def draw_board(self):
         """Draw the game board (inner 5x5 and outer ring for Level 2)."""
@@ -729,19 +958,23 @@ class GameGUI:
                 x = GRID_OFFSET_X + col * CELL_SIZE
                 y = GRID_OFFSET_Y + row * CELL_SIZE
                 
-                # Highlight the last placed cell, otherwise valid adjacent cells (when hints are on)
-                if last_inner_pos and (row, col) == last_inner_pos:
+                # Highlight: solution cells in orange, last placed in yellow, hints in green
+                if (row, col) in self.game_board.solution_cells:
+                    pygame.draw.rect(self.screen, ORANGE, (x, y, CELL_SIZE, CELL_SIZE))
+                elif last_inner_pos and (row, col) == last_inner_pos:
                     pygame.draw.rect(self.screen, YELLOW, (x, y, CELL_SIZE, CELL_SIZE))
                 elif (row, col) in valid_cells:
                     pygame.draw.rect(self.screen, GREEN, (x, y, CELL_SIZE, CELL_SIZE))
                 else:
                     pygame.draw.rect(self.screen, WHITE, (x, y, CELL_SIZE, CELL_SIZE))
                 pygame.draw.rect(self.screen, BLACK, (x, y, CELL_SIZE, CELL_SIZE), 2)
-                
+
                 # Draw number if present
                 number = self.game_board.inner_board[row][col]
                 if number is not None:
-                    text = self.font_medium.render(str(number), True, BLACK)
+                    # Solution numbers in different color (User Story 13)
+                    num_color = ORANGE if (row, col) in self.game_board.solution_cells else BLACK
+                    text = self.font_medium.render(str(number), True, num_color)
                     text_rect = text.get_rect(center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2))
                     self.screen.blit(text, text_rect)
         
@@ -758,19 +991,23 @@ class GameGUI:
         
         # Draw each ring cell
         for idx, (x, y) in enumerate(ring_positions):
-            # Green for corners only
-            if idx in corner_indices:
+            # Solution ring cells in orange, corners green, others light gray
+            if idx in self.game_board.solution_ring_indices:
+                cell_color = ORANGE
+            elif idx in corner_indices:
                 cell_color = GREEN
             else:
                 cell_color = LIGHT_GRAY
-            
+
             pygame.draw.rect(self.screen, cell_color, (x, y, CELL_SIZE, CELL_SIZE))
             pygame.draw.rect(self.screen, DARK_GRAY, (x, y, CELL_SIZE, CELL_SIZE), 2)
-            
+
             # Draw number if present
             number = self.game_board.outer_ring[idx]
             if number is not None:
-                text = self.font_medium.render(str(number), True, BLACK)
+                # Solution numbers in different color (User Story 13)
+                num_color = ORANGE if idx in self.game_board.solution_ring_indices else BLACK
+                text = self.font_medium.render(str(number), True, num_color)
                 text_rect = text.get_rect(center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2))
                 self.screen.blit(text, text_rect)
     
@@ -824,6 +1061,7 @@ class GameGUI:
         self.undo_btn.draw(self.screen, self.font_small)
         self.level2_btn.draw(self.screen, self.font_small)
         self.hint_btn.draw(self.screen, self.font_small)
+        self.solution_btn.draw(self.screen, self.font_small)
         self.leaderboard_btn.draw(self.screen, self.font_small)
 
         # Draw leaderboard overlay if toggled on
@@ -1100,6 +1338,16 @@ class GameGUI:
             self.message = "Already in Level 2!"
             self.message_color = RED
 
+    def handle_solution(self):
+        """Show a full solution for the current level (User Story 13)."""
+        if self.game_board.showing_solution:
+            self.message = "Solution already displayed!"
+            self.message_color = RED
+            return
+        success, msg = self.game_board.solve_and_display()
+        self.message = msg
+        self.message_color = GREEN if success else RED
+
     def _toggle_hints(self):
         """Toggle display of valid Level 1 moves."""
         # Only meaningful in Level 1, but safe to toggle anytime
@@ -1124,6 +1372,8 @@ class GameGUI:
                 self._toggle_leaderboard()
             if self.hint_btn.handle_event(event):
                 self._toggle_hints()
+            if self.solution_btn.handle_event(event):
+                self.handle_solution()
             
             # Cell click
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1145,10 +1395,14 @@ class GameGUI:
         sys.exit()
 
 
+# =============================================================================
+# Section 8: Entry Point
+# =============================================================================
+
 def main():
     """Entry point for the game."""
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    pygame.display.set_caption("5x5 Matrix Game - Sprint 1")
+    pygame.display.set_caption("5x5 Matrix Game - Sprint 2")
     clock = pygame.time.Clock()
 
     login = LoginScreen(screen, clock)
