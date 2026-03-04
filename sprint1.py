@@ -939,22 +939,23 @@ class GameGUI:
         # Initialize game
         self.game_board.initialize_level_1()
         
-        def create_buttons(self):
-            """Create UI buttons."""
-            button_y = WINDOW_HEIGHT - 80
-            spacing = BUTTON_WIDTH + 10
+    def create_buttons(self):
+        """Create UI buttons."""
+        button_y = WINDOW_HEIGHT - 80
+        spacing = BUTTON_WIDTH + 10
 
-            # 8 buttons total
-            start_x = (WINDOW_WIDTH - (spacing * 8 - 10)) // 2
+        # 8 buttons total
+        start_x = (WINDOW_WIDTH - (spacing * 8 - 10)) // 2
 
-            self.new_game_btn = Button(start_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "New Game", GREEN)
-            self.clear_btn = Button(start_x + spacing, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Clear", YELLOW)
-            self.undo_btn = Button(start_x + spacing * 2, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Undo", BLUE)
-            self.level2_btn = Button(start_x + spacing * 3, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 2", RED)
-            self.level3_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 3", RED)
-            self.hint_btn = Button(start_x + spacing * 5, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Hint", BLUE)
-            self.solution_btn = Button(start_x + spacing * 6, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Solution", ORANGE)
-            self.leaderboard_btn = Button(start_x + spacing * 7, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
+        self.new_game_btn = Button(start_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "New Game", GREEN)
+        self.clear_btn = Button(start_x + spacing, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Clear", YELLOW)
+        self.undo_btn = Button(start_x + spacing * 2, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Undo", BLUE)
+        self.level2_btn = Button(start_x + spacing * 3, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 2", RED)
+        self.level3_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 3", RED)
+        self.hint_btn = Button(start_x + spacing * 5, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Hint", BLUE)
+        self.solution_btn = Button(start_x + spacing * 6, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Solution", ORANGE)
+        self.leaderboard_btn = Button(start_x + spacing * 7, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
+        
     def draw_board(self):
         """Draw the game board (inner 5x5 and outer ring for Level 2)."""
         # Highlight last placed position in Level 1
