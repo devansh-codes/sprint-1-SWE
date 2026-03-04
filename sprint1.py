@@ -660,6 +660,10 @@ class GameGUI:
         self.message = "Welcome! Click on a cell to place numbers."
         self.message_color = BLACK
 
+        # Leaderboard state
+        self.show_leaderboard = False
+        self.leaderboard_entries = []
+
         # Timer state
         self.time_limit = 0          # 0 = no limit
         self.level_start_ticks = pygame.time.get_ticks()
@@ -672,12 +676,14 @@ class GameGUI:
         """Create UI buttons."""
         button_y = WINDOW_HEIGHT - 80
         spacing = BUTTON_WIDTH + 20
-        start_x = (WINDOW_WIDTH - (spacing * 4 - 20)) // 2
+        # 5 buttons total (including Top 10)
+        start_x = (WINDOW_WIDTH - (spacing * 5 - 20)) // 2
         
         self.new_game_btn = Button(start_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "New Game", GREEN)
         self.clear_btn = Button(start_x + spacing, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Clear", YELLOW)
         self.undo_btn = Button(start_x + spacing * 2, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Undo", BLUE)
         self.level2_btn = Button(start_x + spacing * 3, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 2", RED)
+        self.leaderboard_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
         
     def draw_board(self):
         """Draw the game board (inner 5x5 and outer ring for Level 2)."""
@@ -784,6 +790,11 @@ class GameGUI:
         self.clear_btn.draw(self.screen, self.font_small)
         self.undo_btn.draw(self.screen, self.font_small)
         self.level2_btn.draw(self.screen, self.font_small)
+        self.leaderboard_btn.draw(self.screen, self.font_small)
+
+        # Draw leaderboard overlay if toggled on
+        if self.show_leaderboard:
+            self.draw_leaderboard_overlay()
     
     def handle_cell_click(self, pos):
         """Handle mouse click on game board cells."""
@@ -814,6 +825,7 @@ class GameGUI:
                                 self.message = f"Level 1 Complete! Score: {self.game_board.score}{time_msg}"
                                 self.message_color = BLUE
                                 self.game_board.save_game_log()
+                                self._add_leaderboard_entry()
                             # Check for dead end
                             elif not self.game_board.has_valid_moves():
                                 self.message = "Dead end! Use Undo to rollback."
@@ -860,6 +872,7 @@ class GameGUI:
                             self.message = f"Level 2 Complete! Final Score: {self.game_board.score}{time_msg}"
                             self.message_color = BLUE
                             self.game_board.save_game_log()
+                            self._add_leaderboard_entry()
                         # Check for dead end
                         elif not self.game_board.has_valid_moves():
                             self.message = "Dead end! Use Undo to rollback."
@@ -914,6 +927,95 @@ class GameGUI:
             ring_positions.append((GRID_OFFSET_X - CELL_SIZE, GRID_OFFSET_Y - CELL_SIZE + i * CELL_SIZE))
         
         return ring_positions
+
+    def _load_leaderboard(self):
+        """Load leaderboard entries from file."""
+        leaderboard_file = Path("leaderboard.json")
+        if leaderboard_file.exists():
+            try:
+                with open(leaderboard_file, "r") as f:
+                    entries = json.load(f)
+                    if isinstance(entries, list):
+                        return entries
+            except json.JSONDecodeError:
+                return []
+        return []
+
+    def _save_leaderboard(self, entries):
+        """Persist leaderboard entries to file."""
+        leaderboard_file = Path("leaderboard.json")
+        with open(leaderboard_file, "w") as f:
+            json.dump(entries, f, indent=2)
+
+    def _add_leaderboard_entry(self):
+        """Add current game result to leaderboard and keep top 10 by score."""
+        entry = {
+            "player_name": self.game_board.player_name,
+            "score": self.game_board.score,
+            "level": self.game_board.level,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        entries = self._load_leaderboard()
+        entries.append(entry)
+        # Sort by score descending, then by most recent timestamp
+        entries.sort(key=lambda e: (e.get("score", 0), e.get("timestamp", "")), reverse=True)
+        entries = entries[:10]
+        self._save_leaderboard(entries)
+        self.leaderboard_entries = entries
+
+    def _toggle_leaderboard(self):
+        """Toggle leaderboard overlay visibility."""
+        if not self.show_leaderboard:
+            # Refresh from disk when opening
+            self.leaderboard_entries = self._load_leaderboard()
+        self.show_leaderboard = not self.show_leaderboard
+
+    def draw_leaderboard_overlay(self):
+        """Draw a small panel overlay showing the top 10 scores."""
+        width = 360
+        height = 320
+        x = WINDOW_WIDTH - width - 30
+        y = 40
+
+        # Panel background
+        panel_rect = pygame.Rect(x, y, width, height)
+        pygame.draw.rect(self.screen, LIGHT_GRAY, panel_rect, border_radius=8)
+        pygame.draw.rect(self.screen, DARK_GRAY, panel_rect, 2, border_radius=8)
+
+        title_text = self.font_medium.render("Top 10 Scores", True, BLACK)
+        self.screen.blit(title_text, (x + 20, y + 15))
+
+        if not self.leaderboard_entries:
+            empty_text = self.font_small.render("No scores yet.", True, DARK_GRAY)
+            self.screen.blit(empty_text, (x + 20, y + 70))
+            return
+
+        header_y = y + 60
+        name_header = self.font_small.render("Player", True, BLACK)
+        score_header = self.font_small.render("Score", True, BLACK)
+        level_header = self.font_small.render("Lvl", True, BLACK)
+        self.screen.blit(name_header, (x + 20, header_y))
+        self.screen.blit(score_header, (x + 190, header_y))
+        self.screen.blit(level_header, (x + 275, header_y))
+
+        row_y = header_y + 30
+        for idx, entry in enumerate(self.leaderboard_entries[:10]):
+            name = str(entry.get("player_name", ""))[:12]
+            score = str(entry.get("score", ""))
+            level = str(entry.get("level", ""))
+
+            rank_text = self.font_small.render(f"{idx + 1}.", True, DARK_GRAY)
+            name_text = self.font_small.render(name, True, BLACK)
+            score_text = self.font_small.render(score, True, BLACK)
+            level_text = self.font_small.render(level, True, BLACK)
+
+            self.screen.blit(rank_text, (x + 20, row_y))
+            self.screen.blit(name_text, (x + 45, row_y))
+            self.screen.blit(score_text, (x + 190, row_y))
+            self.screen.blit(level_text, (x + 275, row_y))
+
+            row_y += 26
     
     def handle_new_game(self):
         """Start a new game at Level 1."""
@@ -975,6 +1077,8 @@ class GameGUI:
                 self.handle_undo()
             if self.level2_btn.handle_event(event):
                 self.handle_level_2()
+            if self.leaderboard_btn.handle_event(event):
+                self._toggle_leaderboard()
             
             # Cell click
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
