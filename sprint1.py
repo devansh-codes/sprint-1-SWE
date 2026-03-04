@@ -166,62 +166,72 @@ class GameBoard:
         self.history = []
         self._clear_solution()
 
-    def place_number(self, row: int, col: int, board_type: str = 'inner', ring_idx: int = None) -> Tuple[bool, str]:
-        """
-        Place the next number at the specified position.
-        Returns (success, message).
-        """
-        if self.level == 1:
-            # Level 1: place on inner board with adjacency rule
-            if board_type != 'inner':
-                return False, "Only inner board available in Level 1!"
-            if row < 0 or row >= 5 or col < 0 or col >= 5:
-                return False, "Out of bounds!"
-            if self.inner_board[row][col] is not None:
-                return False, "Cell already occupied!"
-            
-            # Adjacency check: must be exactly 1 step from predecessor
-            if self.last_position is not None:
-                _, last_r, last_c = self.last_position
-                dr = abs(row - last_r)
-                dc = abs(col - last_c)
-                if dr > 1 or dc > 1 or (dr == 0 and dc == 0):
-                    return False, "Must be adjacent (1 step) to the previous number!"
-            
-            # Scoring: +1 point for diagonal placement from predecessor
-            score_before = self.score
-            if self.last_position is not None:
-                _, last_r, last_c = self.last_position
-                if abs(row - last_r) == 1 and abs(col - last_c) == 1:
-                    self.score += 1
-            
-            # Place number
-            self.inner_board[row][col] = self.next_number
-            self.last_position = ('inner', row, col)
-            self.history.append(('inner', row, col, self.next_number, score_before))
-            self.next_number += 1
-            return True, f"Number {self.next_number - 1} placed! Score: {self.score}"
-        
-        else:
-            # Level 2: place on outer ring based on inner board position rules
-            if board_type != 'outer' or ring_idx is None:
-                return False, "In Level 2, place numbers on the outer ring!"
-            if self.outer_ring[ring_idx] is not None:
-                return False, "Cell already occupied!"
-            
-            # Check if ring cell is a valid position for the current next_number
-            valid_indices = self._get_valid_ring_indices(self.next_number)
-            if ring_idx not in valid_indices:
-                return False, f"Invalid position for {self.next_number}! Must align with its row/column on inner board."
-            
-            # Place number
-            score_before = self.score
-            self.outer_ring[ring_idx] = self.next_number
-            self.last_position = ('outer', ring_idx)
-            self.history.append(('outer', ring_idx, None, self.next_number, score_before))
-            self.next_number += 1
-            return True, f"Number {self.next_number - 1} placed on outer ring!"
-    
+def place_number(self, row: int, col: int, board_type: str = 'inner', ring_idx: int = None) -> Tuple[bool, str]:
+    """
+    Place the next number at the specified position.
+    Returns (success, message).
+
+    User Story 10: +1 per successful placement (all levels), -1 per undo/clear.
+    Level rules:
+      - Level 1: inner board adjacency rule (8-direction).
+      - Level 2: outer ring placement rule based on inner position.
+      - Level 3: inner board adjacency + intersection rule + corner diagonal rule (see Level 3.pdf).
+    """
+
+    # ---------- Level 1 and Level 3: place on inner board ----------
+    if self.level in (1, 3):
+        if board_type != 'inner':
+            return False, "Only inner board placements are allowed in this level!"
+        if row < 0 or row >= 5 or col < 0 or col >= 5:
+            return False, "Out of bounds!"
+        if self.inner_board[row][col] is not None:
+            return False, "Cell already occupied!"
+
+        # Must be adjacent to the previous number (same rule as Level 1)
+        if self.last_position is not None:
+            _, last_r, last_c = self.last_position
+            dr = abs(row - last_r)
+            dc = abs(col - last_c)
+            if dr > 1 or dc > 1 or (dr == 0 and dc == 0):
+                return False, "Must be adjacent (1 step) to the previous number!"
+
+        # Level 3 additional constraints
+        if self.level == 3:
+            valid_cells = set(self.get_level3_valid_cells(self.next_number))
+            if (row, col) not in valid_cells:
+                return False, f"Invalid Level 3 position for {self.next_number}!"
+
+        score_before = self.score
+        self.score += 1  # US10
+
+        self.inner_board[row][col] = self.next_number
+        self.last_position = ('inner', row, col)
+        self.history.append(('inner', row, col, self.next_number, score_before))
+        self.next_number += 1
+        return True, f"Number {self.next_number - 1} placed! Score: {self.score}"
+
+    # ---------- Level 2: place on outer ring ----------
+    if self.level == 2:
+        if board_type != 'outer' or ring_idx is None:
+            return False, "In Level 2, place numbers on the outer ring!"
+        if self.outer_ring[ring_idx] is not None:
+            return False, "Cell already occupied!"
+
+        valid_indices = self._get_valid_ring_indices(self.next_number)
+        if ring_idx not in valid_indices:
+            return False, f"Invalid position for {self.next_number}! Must align with its row/column on inner board."
+
+        score_before = self.score
+        self.score += 1  # US10
+
+        self.outer_ring[ring_idx] = self.next_number
+        self.last_position = ('outer', ring_idx)
+        self.history.append(('outer', ring_idx, None, self.next_number, score_before))
+        self.next_number += 1
+        return True, f"Number {self.next_number - 1} placed on outer ring! Score: {self.score}"
+
+    return False, "Unknown level state."
+
     def _find_number_on_inner_board(self, number: int) -> Optional[Tuple[int, int]]:
         """Find the (row, col) of a number on the inner board."""
         for r in range(5):
@@ -259,26 +269,32 @@ class GameBoard:
         # Filter out already-occupied cells
         return [idx for idx in valid if self.outer_ring[idx] is None]
     
-    def has_valid_moves(self) -> bool:
-        """Check if the player has any valid moves available."""
-        if self.level == 1:
-            if self.last_position is None:
-                return True
-            _, last_r, last_c = self.last_position
-            # Check all 8 adjacent cells
-            for dr in [-1, 0, 1]:
-                for dc in [-1, 0, 1]:
-                    if dr == 0 and dc == 0:
-                        continue
-                    nr, nc = last_r + dr, last_c + dc
-                    if 0 <= nr < 5 and 0 <= nc < 5 and self.inner_board[nr][nc] is None:
-                        return True
+def has_valid_moves(self) -> bool:
+    """Check if the player has any valid moves available."""
+    if self.level == 1:
+        if self.last_position is None:
+            return True
+        _, last_r, last_c = self.last_position
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = last_r + dr, last_c + dc
+                if 0 <= nr < 5 and 0 <= nc < 5 and self.inner_board[nr][nc] is None:
+                    return True
+        return False
+
+    if self.level == 2:
+        if self.next_number > 25:
             return False
-        else:
-            # Level 2: check if current next_number has valid ring positions
-            if self.next_number > 25:
-                return False
-            return len(self._get_valid_ring_indices(self.next_number)) > 0
+        return len(self._get_valid_ring_indices(self.next_number)) > 0
+
+    if self.level == 3:
+        if self.next_number > 25:
+            return False
+        return len(self.get_level3_valid_cells(self.next_number)) > 0
+
+    return False
 
     def get_valid_adjacent_empty_cells(self):
         """
@@ -301,58 +317,109 @@ class GameBoard:
                     valid_cells.append((nr, nc))
 
         return valid_cells
+
+
+def get_level2_valid_ring_indices(self, number: int) -> List[int]:
+    """Helper for UI hints in Level 2."""
+    return self._get_valid_ring_indices(number)
+
+def get_level3_valid_cells(self, number: int) -> List[Tuple[int, int]]:
+    """Compute valid inner-board cells for Level 3 for the given number."""
+    if self.level != 3:
+        return []
+
+    top = self.outer_ring[0:7]
+    right = self.outer_ring[7:12]      # rows 0..4
+    bottom = self.outer_ring[12:19]    # cols 4..0
+    left = self.outer_ring[19:24]      # rows 4..0
+
+    rows = set()
+    cols = set()
+
+    # row ends
+    for r in range(5):
+        left_end = left[4 - r]   # left is bottom->top
+        right_end = right[r]
+        if left_end == number or right_end == number:
+            rows.add(r)
+
+    # column ends
+    for c in range(5):
+        top_end = top[c + 1]          # top indices 1..5 correspond to cols 0..4
+        bottom_end = bottom[4 - c]    # bottom is right->left
+        if top_end == number or bottom_end == number:
+            cols.add(c)
+
+    if not rows or not cols:
+        return []
+
+    corner_numbers = {self.outer_ring[0], self.outer_ring[6], self.outer_ring[12], self.outer_ring[18]}
+    diagonal_required = number in corner_numbers
+
+    valid = []
+    for r in rows:
+        for c in cols:
+            if self.inner_board[r][c] is None:
+                if diagonal_required and not (r == c or r + c == 4):
+                    continue
+                valid.append((r, c))
+
+    # adjacency to last placed number
+    if self.last_position and self.last_position[0] == 'inner':
+        _, last_r, last_c = self.last_position
+        valid = [(r, c) for (r, c) in valid if (abs(r - last_r) <= 1 and abs(c - last_c) <= 1 and not (r == last_r and c == last_c))]
+
+    return valid
     
-    def undo(self) -> bool:
-        """Undo the last move. Returns True if successful."""
-        if self.level == 1 and len(self.history) <= 1:
-            # Keep at least number 1 in Level 1
-            return False
-        if self.level == 2 and len(self.history) == 0:
-            return False
-        
-        # Pop last move from history
-        last_move = self.history.pop()
-        board_type = last_move[0]
-        
-        # Restore board state
-        if board_type == 'inner':
-            row, col = last_move[1], last_move[2]
-            self.inner_board[row][col] = None
-        else:  # outer ring
-            ring_idx = last_move[1]
-            self.outer_ring[ring_idx] = None
-        
-        # Restore score and decrement next_number
-        self.score = last_move[4]
-        self.next_number -= 1
-        
-        # Update last_position to previous move
-        if len(self.history) > 0:
-            prev_move = self.history[-1]
-            if prev_move[0] == 'inner':
-                self.last_position = ('inner', prev_move[1], prev_move[2])
-            else:
-                self.last_position = ('outer', prev_move[1])
+def undo(self) -> bool:
+    """Undo the last move. Returns True if successful. (US10: -1 per undo)"""
+    if self.level in (1, 3) and len(self.history) <= 1:
+        return False
+    if self.level == 2 and len(self.history) == 0:
+        return False
+
+    last_move = self.history.pop()
+    board_type = last_move[0]
+
+    if board_type == 'inner':
+        row, col = last_move[1], last_move[2]
+        self.inner_board[row][col] = None
+    else:
+        ring_idx = last_move[1]
+        self.outer_ring[ring_idx] = None
+
+    self.score = max(0, self.score - 1)
+    self.next_number -= 1
+
+    if len(self.history) > 0:
+        prev_move = self.history[-1]
+        if prev_move[0] == 'inner':
+            self.last_position = ('inner', prev_move[1], prev_move[2])
         else:
-            self.last_position = None
+            self.last_position = ('outer', prev_move[1])
+    else:
+        self.last_position = None
 
-        self._clear_solution()
-        return True
+    self._clear_solution()
+    return True
 
-    def clear_board(self, random_restart=True):
-        """Clear the board for restart."""
-        if self.level == 1:
-            # Always keep number 1 in the same original square when clearing
-            self.initialize_level_1(random_start=False)
+def clear_board(self, random_restart=True):
+    """Clear the board for restart. (US10: -1 per cell rolled back/cleared)"""
+    if self.level == 1:
+        removed = sum(1 for r in range(5) for c in range(5) if self.inner_board[r][c] is not None) - 1
+        self.score = max(0, self.score - max(0, removed))
+        self.initialize_level_1(random_start=False)
 
-        elif self.level == 2:
-            # Clear ONLY the outer ring; inner stays
-            self.initialize_level_2()
+    elif self.level == 2:
+        removed = sum(1 for v in self.outer_ring if v is not None)
+        self.score = max(0, self.score - removed)
+        self.initialize_level_2()
 
-        elif self.level == 3:
-            # Level 3 clear: keep outer ring, reset inner grid to only 1
-            self.initialize_level_3()
-    
+    elif self.level == 3:
+        removed = sum(1 for r in range(5) for c in range(5) if self.inner_board[r][c] is not None) - 1
+        self.score = max(0, self.score - max(0, removed))
+        self.initialize_level_3()
+
     def is_valid_placement(self, row: int, col: int) -> bool:
         """Check if a placement is valid (not checking number sequence)."""
         # Check if row, col is within bounds
@@ -361,46 +428,39 @@ class GameBoard:
         # Check if cell is empty
         return self.inner_board[row][col] is None
     
-    def is_level_complete(self) -> bool:
-        """Check if current level is complete."""
-        if self.level == 1:
-            # Level 1: all 25 cells filled (next_number > 25)
-            return self.next_number > 25
-        else:  # Level 2
-            # Level 2: numbers 2-25 placed on outer ring (next_number > 25)
-            return self.next_number > 25
-    
-    def save_game_log(self):
-        """Save completed game to log file."""
-        log_entry = {
-            "player_name": self.player_name,
-            "date_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "level": self.level,
-            "score": self.score,
-            "inner_board": self.inner_board,
-            "outer_ring": self.outer_ring if self.level == 2 else None
-        }
-        
-        log_file = Path("game_log.json")
-        
-        # Load existing logs or create new list
-        if log_file.exists():
-            with open(log_file, 'r') as f:
-                try:
-                    logs = json.load(f)
-                except json.JSONDecodeError:
-                    logs = []
-        else:
-            logs = []
-        
-        # Append new log
-        logs.append(log_entry)
-        
-        # Save back to file
-        with open(log_file, 'w') as f:
-            json.dump(logs, f, indent=2)
+def is_level_complete(self) -> bool:
+    """Check if current level is complete."""
+    if self.level in (1, 3):
+        return self.next_number > 25
+    if self.level == 2:
+        return self.next_number > 25
+    return False
 
-    # ---- User Story 13: Solution Display ----
+def save_game_log(self):
+    """Save completed game to log file."""
+    log_entry = {
+        "player_name": self.player_name,
+        "date_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "level": self.level,
+        "score": self.score,
+        "inner_board": self.inner_board,
+        "outer_ring": self.outer_ring if self.level >= 2 else None
+    }
+
+    log_file = Path("game_log.json")
+    if log_file.exists():
+        with open(log_file, 'r') as f:
+            try:
+                logs = json.load(f)
+            except json.JSONDecodeError:
+                logs = []
+    else:
+        logs = []
+
+    logs.append(log_entry)
+
+    with open(log_file, 'w') as f:
+        json.dump(logs, f, indent=2)
 
     def _clear_solution(self):
         """Clear any displayed solution."""
@@ -408,20 +468,18 @@ class GameBoard:
         self.solution_ring_indices = set()
         self.showing_solution = False
 
-    def solve_and_display(self):
-        """
-        Attempt to find and display a solution for unfinished cells.
-        First tries from current state; if that fails, clears and solves from scratch.
-        Returns (success, message).
-        """
-        self._clear_solution()
+def solve_and_display(self):
+    """Attempt to find and display a solution for unfinished cells (US13)."""
+    self._clear_solution()
 
-        if self.level == 1:
-            return self._solve_level_1()
-        elif self.level == 2:
-            return self._solve_level_2()
-        else:
-            return False, "Solution not available for this level."
+    if self.level == 1:
+        return self._solve_level_1()
+    elif self.level == 2:
+        return self._solve_level_2()
+    elif self.level == 3:
+        return self._solve_level_3()
+    else:
+        return False, "Solution not available for this level."
 
     def _solve_level_1(self):
         """Solve Level 1 using backtracking from the current board state."""
@@ -584,6 +642,108 @@ class GameBoard:
             ring[idx] = None
 
         return False
+
+
+def _solve_level_3(self):
+    """Solve Level 3 using backtracking."""
+    if self.is_level_complete():
+        return False, "Level already complete!"
+
+    # player-filled cells for coloring
+    player_cells = {(r, c) for r in range(5) for c in range(5) if self.inner_board[r][c] is not None}
+
+    # find position of 1
+    one_pos = None
+    for r in range(5):
+        for c in range(5):
+            if self.inner_board[r][c] == 1:
+                one_pos = (r, c)
+                break
+        if one_pos:
+            break
+    if one_pos is None:
+        return False, "Invalid Level 3 state: missing number 1."
+
+    # find last placed number
+    max_num = 1
+    last_r, last_c = one_pos
+    for r in range(5):
+        for c in range(5):
+            v = self.inner_board[r][c]
+            if isinstance(v, int) and v > max_num:
+                max_num = v
+                last_r, last_c = r, c
+
+    board_copy = [row[:] for row in self.inner_board]
+    if self._backtrack_level_3(board_copy, last_r, last_c, max_num + 1):
+        for r in range(5):
+            for c in range(5):
+                if (r, c) not in player_cells and board_copy[r][c] is not None:
+                    self.inner_board[r][c] = board_copy[r][c]
+                    self.solution_cells.add((r, c))
+        self.showing_solution = True
+        self.next_number = 26
+        return True, "Solution displayed! Orange cells are auto-filled."
+
+    # clear to only 1 and solve
+    self.inner_board = [[None for _ in range(5)] for _ in range(5)]
+    self.inner_board[one_pos[0]][one_pos[1]] = 1
+    board_copy = [row[:] for row in self.inner_board]
+    if self._backtrack_level_3(board_copy, one_pos[0], one_pos[1], 2):
+        self.solution_cells = set()
+        for r in range(5):
+            for c in range(5):
+                self.inner_board[r][c] = board_copy[r][c]
+                if (r, c) != one_pos:
+                    self.solution_cells.add((r, c))
+        self.showing_solution = True
+        self.next_number = 26
+        return True, "No solution from your moves. Inner grid cleared. Full solution in orange."
+
+    return False, "Could not find any solution for Level 3!"
+
+def _backtrack_level_3(self, board, last_r, last_c, next_num):
+    if next_num > 25:
+        return True
+
+    # compute candidates using Level 3 rules
+    saved_inner = self.inner_board
+    saved_last = self.last_position
+    saved_level = self.level
+    try:
+        self.level = 3
+        self.inner_board = board
+        self.last_position = ('inner', last_r, last_c)
+        candidates = self.get_level3_valid_cells(next_num)
+    finally:
+        self.inner_board = saved_inner
+        self.last_position = saved_last
+        self.level = saved_level
+
+    # heuristic: fewer onward moves first
+    def onward(rc):
+        r, c = rc
+        saved_inner2 = self.inner_board
+        saved_last2 = self.last_position
+        saved_level2 = self.level
+        try:
+            self.level = 3
+            self.inner_board = board
+            self.last_position = ('inner', r, c)
+            return len(self.get_level3_valid_cells(next_num + 1))
+        finally:
+            self.inner_board = saved_inner2
+            self.last_position = saved_last2
+            self.level = saved_level2
+
+    candidates.sort(key=onward)
+
+    for r, c in candidates:
+        board[r][c] = next_num
+        if self._backtrack_level_3(board, r, c, next_num + 1):
+            return True
+        board[r][c] = None
+    return False
 
 
 # =============================================================================
@@ -960,13 +1120,17 @@ class GameGUI:
         """Draw the game board (inner 5x5 and outer ring for Level 2)."""
         # Highlight last placed position in Level 1
         last_inner_pos = None
-        if self.game_board.level == 1 and self.game_board.last_position is not None:
+        if self.game_board.level in (1, 3) and self.game_board.last_position is not None:
             last_inner_pos = (self.game_board.last_position[1], self.game_board.last_position[2])
 
         # Compute valid adjacent empty cells for Level 1 highlighting (used when hints are on)
         valid_cells = set()
-        if self.game_board.level == 1 and self.show_hints:
-            valid_cells = set(self.game_board.get_valid_adjacent_empty_cells())
+        if self.show_hints:
+            if self.game_board.level == 1:
+                valid_cells = set(self.game_board.get_valid_adjacent_empty_cells())
+            elif self.game_board.level == 3:
+                valid_cells = set(self.game_board.get_level3_valid_cells(self.game_board.next_number))
+
         
         # Draw inner 5x5 grid
         for row in range(5):
@@ -1004,12 +1168,18 @@ class GameGUI:
         
         # Corner indices: top-left=0, top-right=6, bottom-right=12, bottom-left=18
         corner_indices = {0, 6, 12, 18}
+
+        hint_indices = set()
+        if self.show_hints and self.game_board.level == 2:
+            hint_indices = set(self.game_board.get_level2_valid_ring_indices(self.game_board.next_number))
         
         # Draw each ring cell
         for idx, (x, y) in enumerate(ring_positions):
             # Solution ring cells in orange, corners green, others light gray
             if idx in self.game_board.solution_ring_indices:
                 cell_color = ORANGE
+            elif idx in hint_indices:
+                cell_color = YELLOW
             elif idx in corner_indices:
                 cell_color = GREEN
             else:
@@ -1126,7 +1296,7 @@ class GameGUI:
                             self.message = msg
                             self.message_color = RED
                         return
-        elif self.game_board.level >= 2:
+        elif self.game_board.level == 2:
             # In Level 2, clicking inner board does nothing
             for row in range(5):
                 for col in range(5):
@@ -1138,9 +1308,42 @@ class GameGUI:
                         self.message_color = RED
                         self.sound_manager.play_invalid_sound()
                         return
+
+        elif self.game_board.level == 3:
+            # Level 3: inner board active again
+            for row in range(5):
+                for col in range(5):
+                    x = GRID_OFFSET_X + col * CELL_SIZE
+                    y = GRID_OFFSET_Y + row * CELL_SIZE
+                    cell_rect = pygame.Rect(x, y, CELL_SIZE, CELL_SIZE)
+                    if cell_rect.collidepoint(pos):
+                        success, msg = self.game_board.place_number(row, col, 'inner')
+                        if success:
+                            self.show_hints = False
+                            self.sound_manager.play_valid_sound()
+                            self.message = msg
+                            self.message_color = GREEN
         
+                            if self.game_board.is_level_complete():
+                                self.level_complete = True
+                                time_msg = self._apply_time_score()
+                                self.sound_manager.play_success_sound()
+                                self.message = f"Level 3 Complete! Final Score: {self.game_board.score}{time_msg}"
+                                self.message_color = BLUE
+                                self.game_board.save_game_log()
+                                self._add_leaderboard_entry()
+                            elif not self.game_board.has_valid_moves():
+                                self.message = "Dead end! Use Undo to rollback."
+                                self.message_color = RED
+                        else:
+                            self.sound_manager.play_invalid_sound()
+                            self.message = msg
+                            self.message_color = RED
+                        return
+        
+                
         # Check outer ring for Level 2
-        if self.game_board.level >= 2:
+        if self.game_board.level == 2:
             # Calculate outer ring cell positions
             ring_positions = self._get_ring_positions()
             
@@ -1317,17 +1520,18 @@ class GameGUI:
         self.message = "New game started! Place numbers sequentially."
         self.message_color = BLACK
     
-    def handle_clear(self):
-        """Clear the board based on current level."""
-        # For simplicity, always use random restart for Level 1
-        self.game_board.clear_board(random_restart=True)
-        self._reset_timer()
-        if self.game_board.level == 1:
-            self.message = "Board cleared! Number 1 placed randomly."
-        else:
-            self.message = "Outer ring cleared! Inner board remains."
-        self.message_color = BLACK
-    
+def handle_clear(self):
+    """Clear the board based on current level."""
+    self.game_board.clear_board(random_restart=True)
+    self._reset_timer()
+    if self.game_board.level == 1:
+        self.message = "Board cleared! Number 1 placed randomly."
+    elif self.game_board.level == 2:
+        self.message = "Outer ring cleared! Inner board remains."
+    elif self.game_board.level == 3:
+        self.message = "Inner grid cleared! Outer ring remains."
+    self.message_color = BLACK
+
     def handle_undo(self):
         """Undo the last move."""
         if self.game_board.undo():
@@ -1364,16 +1568,26 @@ class GameGUI:
         self.message = msg
         self.message_color = GREEN if success else RED
 
-    def handle_level_3(self):
-        """Activate Level 3."""
-        if self.game_board.level == 2 and self.game_board.is_level_complete():
-            self.game_board.initialize_level_3()
-            self._reset_timer()
-            self.message = "Level 3 started! Fill numbers 2-25 in the inner grid."
-            self.message_color = GREEN
-        else:
-            self.message = "Complete Level 2 first!"
-            self.message_color = RED
+def handle_level_3(self):
+    """Activate Level 3."""
+    if self.game_board.level == 2 and self.game_board.is_level_complete():
+        tls = TimeLimitScreen(self.screen, self.clock, level=3)
+        self.time_limit = tls.run()
+
+        self.game_board.initialize_level_3()
+        # Set last_position to current 1 position so adjacency works
+        for r in range(5):
+            for c in range(5):
+                if self.game_board.inner_board[r][c] == 1:
+                    self.game_board.last_position = ('inner', r, c)
+                    break
+
+        self._reset_timer()
+        self.message = "Level 3 started! Place numbers 2-25 in the inner grid."
+        self.message_color = GREEN
+    else:
+        self.message = "Complete Level 2 first!"
+        self.message_color = RED
 
     def _toggle_hints(self):
         """Toggle display of valid Level 1 moves."""
