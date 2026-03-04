@@ -245,6 +245,28 @@ class GameBoard:
             if self.next_number > 25:
                 return False
             return len(self._get_valid_ring_indices(self.next_number)) > 0
+
+    def get_valid_adjacent_empty_cells(self):
+        """
+        Return list of (row, col) pairs for empty cells that are valid
+        placements for the next number in Level 1 (8-direction neighborhood
+        around the last placed number).
+        """
+        if self.level != 1 or self.last_position is None:
+            return []
+
+        _, last_r, last_c = self.last_position
+        valid_cells = []
+
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = last_r + dr, last_c + dc
+                if 0 <= nr < 5 and 0 <= nc < 5 and self.inner_board[nr][nc] is None:
+                    valid_cells.append((nr, nc))
+
+        return valid_cells
     
     def undo(self) -> bool:
         """Undo the last move. Returns True if successful."""
@@ -664,6 +686,9 @@ class GameGUI:
         self.show_leaderboard = False
         self.leaderboard_entries = []
 
+        # Hint state (for highlighting valid cells in Level 1)
+        self.show_hints = False
+
         # Timer state
         self.time_limit = 0          # 0 = no limit
         self.level_start_ticks = pygame.time.get_ticks()
@@ -676,14 +701,15 @@ class GameGUI:
         """Create UI buttons."""
         button_y = WINDOW_HEIGHT - 80
         spacing = BUTTON_WIDTH + 20
-        # 5 buttons total (including Top 10)
-        start_x = (WINDOW_WIDTH - (spacing * 5 - 20)) // 2
+        # 6 buttons total (New, Clear, Undo, Level 2, Hint, Top 10)
+        start_x = (WINDOW_WIDTH - (spacing * 6 - 20)) // 2
         
         self.new_game_btn = Button(start_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "New Game", GREEN)
         self.clear_btn = Button(start_x + spacing, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Clear", YELLOW)
         self.undo_btn = Button(start_x + spacing * 2, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Undo", BLUE)
         self.level2_btn = Button(start_x + spacing * 3, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 2", RED)
-        self.leaderboard_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
+        self.hint_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Hint", BLUE)
+        self.leaderboard_btn = Button(start_x + spacing * 5, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
         
     def draw_board(self):
         """Draw the game board (inner 5x5 and outer ring for Level 2)."""
@@ -691,6 +717,11 @@ class GameGUI:
         last_inner_pos = None
         if self.game_board.level == 1 and self.game_board.last_position is not None:
             last_inner_pos = (self.game_board.last_position[1], self.game_board.last_position[2])
+
+        # Compute valid adjacent empty cells for Level 1 highlighting (used when hints are on)
+        valid_cells = set()
+        if self.game_board.level == 1 and self.show_hints:
+            valid_cells = set(self.game_board.get_valid_adjacent_empty_cells())
         
         # Draw inner 5x5 grid
         for row in range(5):
@@ -698,9 +729,11 @@ class GameGUI:
                 x = GRID_OFFSET_X + col * CELL_SIZE
                 y = GRID_OFFSET_Y + row * CELL_SIZE
                 
-                # Highlight the last placed cell
+                # Highlight the last placed cell, otherwise valid adjacent cells (when hints are on)
                 if last_inner_pos and (row, col) == last_inner_pos:
                     pygame.draw.rect(self.screen, YELLOW, (x, y, CELL_SIZE, CELL_SIZE))
+                elif (row, col) in valid_cells:
+                    pygame.draw.rect(self.screen, GREEN, (x, y, CELL_SIZE, CELL_SIZE))
                 else:
                     pygame.draw.rect(self.screen, WHITE, (x, y, CELL_SIZE, CELL_SIZE))
                 pygame.draw.rect(self.screen, BLACK, (x, y, CELL_SIZE, CELL_SIZE), 2)
@@ -790,6 +823,7 @@ class GameGUI:
         self.clear_btn.draw(self.screen, self.font_small)
         self.undo_btn.draw(self.screen, self.font_small)
         self.level2_btn.draw(self.screen, self.font_small)
+        self.hint_btn.draw(self.screen, self.font_small)
         self.leaderboard_btn.draw(self.screen, self.font_small)
 
         # Draw leaderboard overlay if toggled on
@@ -813,6 +847,8 @@ class GameGUI:
                         success, msg = self.game_board.place_number(row, col, 'inner')
                         
                         if success:
+                            # Hint is one-time: turn off after a successful move
+                            self.show_hints = False
                             self.sound_manager.play_valid_sound()
                             self.message = msg
                             self.message_color = GREEN
@@ -860,6 +896,8 @@ class GameGUI:
                     success, msg = self.game_board.place_number(0, 0, 'outer', ring_idx=idx)
                     
                     if success:
+                        # Turn off hints after any successful placement
+                        self.show_hints = False
                         self.sound_manager.play_valid_sound()
                         self.message = msg
                         self.message_color = GREEN
@@ -1061,6 +1099,11 @@ class GameGUI:
         else:
             self.message = "Already in Level 2!"
             self.message_color = RED
+
+    def _toggle_hints(self):
+        """Toggle display of valid Level 1 moves."""
+        # Only meaningful in Level 1, but safe to toggle anytime
+        self.show_hints = not self.show_hints
     
     def handle_events(self):
         """Handle all pygame events."""
@@ -1079,6 +1122,8 @@ class GameGUI:
                 self.handle_level_2()
             if self.leaderboard_btn.handle_event(event):
                 self._toggle_leaderboard()
+            if self.hint_btn.handle_event(event):
+                self._toggle_hints()
             
             # Cell click
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
