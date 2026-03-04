@@ -22,6 +22,11 @@ User Stories
 6. Error sounds - different beep for invalid moves
 7. Game logging - saves your completed games to a JSON file
 8. Level 2 - outer ring
+
+9. Level 3 expansion - after a player successfully completes Level 2, the game unlocks Level 3. In Level 3 the outer ring remains filled from Level 2, while the inner board numbers (except the number 1) are hidden. The player must rebuild numbers 2–25 again using the constraints provided by the outer ring positions.
+
+10. Reward system - players receive one point for every number successfully placed on the board in any level. If a move is undone or rolled back, one point is removed. Points accumulate across all levels so players can see their overall performance.
+
 11. Time limit - set a time limit per level with bonus/penalty scoring
 14. Authentication - players must register and log in before playing
 15. Hint system - optional button that briefly highlights all valid adjacent moves for the next number in Level 1
@@ -33,6 +38,7 @@ What You Need
 - Python 3.8 or higher
 - pygame library
 - numpy library for sounds
+
 
 How to Install
 --------------
@@ -59,6 +65,7 @@ Login / Register:
 - You cannot access the game without logging in first
 - Credentials are saved in users.json (passwords are hashed)
 
+
 Time Limit (Level 1):
 - After logging in, a time limit screen appears for Level 1
 - Enter any number of seconds (e.g. 30, 60, 80) and click Start Game
@@ -67,12 +74,14 @@ Time Limit (Level 1):
 - Finishing early earns +1 point per unused second
 - Going over costs -1 point per extra second (score floored at 0)
 
+
 Level 1:
 - The game starts with 1 already placed randomly
 - Click on cells next to the last number to place 2, 3, 4, etc.
 - Numbers must be adjacent (including diagonally)
 - Get +1 point for diagonal placements
 - Fill all 25 cells to beat Level 1
+
 
 Level 2:
 - Click the "Level 2" button after beating Level 1
@@ -81,6 +90,14 @@ Level 2:
 - Where you can place depends on where that number is on the inner board
 - Basically row/column ends, plus corners if it's on a diagonal
 - Fill all 24 outer cells to beat Level 2
+
+
+Level 3:
+- Level 3 unlocks automatically after completing Level 2
+- The outer ring from Level 2 remains visible
+- Inner board numbers (except 1) are hidden
+- Players must rebuild numbers 2–25 on the inner board using the constraints from the outer ring
+
 
 Buttons:
 - New Game: starts over
@@ -93,8 +110,9 @@ Buttons:
 
 Scoring
 -------
-Level 1: +1 point each time you place diagonally
-Level 2: validation based on inner board position
++1 point for each number successfully placed
+-1 point for each undo or rollback
+Points accumulate across levels
 Time bonus: +1 point per second remaining when you finish within the limit
 Time penalty: -1 point per second over the limit (score cannot go below 0)
 
@@ -134,4 +152,3 @@ Proj1/
   game_log.json      - saved games (appears after you beat a level)
   QUICK_START.txt    - shorter instructions
   USER_STORIES_IMPLEMENTATION.txt - detailed implementation notes
-

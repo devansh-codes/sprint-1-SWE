@@ -149,15 +149,23 @@ class GameBoard:
     def initialize_level_2(self):
         """Initialize Level 2 by keeping inner board and clearing outer ring."""
         self.level = 2
-        # Keep inner_board as-is (25 numbers remain)
-        # Clear outer_ring (24 cells)
         self.outer_ring = [None] * 24
-        # Level 2 places numbers 2-25 on the outer ring (24 numbers for 24 cells)
         self.next_number = 2
-        # Clear history for Level 2
         self.history = []
         self._clear_solution()
-    
+
+    def initialize_level_3(self):
+        """Initialize Level 3."""
+        self.level = 3
+        # Keep outer ring from Level 2, clear inner grid except 1
+        for r in range(5):
+            for c in range(5):
+                if self.inner_board[r][c] != 1:
+                    self.inner_board[r][c] = None
+        self.next_number = 2
+        self.history = []
+        self._clear_solution()
+
     def place_number(self, row: int, col: int, board_type: str = 'inner', ring_idx: int = None) -> Tuple[bool, str]:
         """
         Place the next number at the specified position.
@@ -330,14 +338,20 @@ class GameBoard:
 
         self._clear_solution()
         return True
-    
+
     def clear_board(self, random_restart=True):
         """Clear the board for restart."""
         if self.level == 1:
             # Always keep number 1 in the same original square when clearing
             self.initialize_level_1(random_start=False)
-        else:  # Level 2
+
+        elif self.level == 2:
+            # Clear ONLY the outer ring; inner stays
             self.initialize_level_2()
+
+        elif self.level == 3:
+            # Level 3 clear: keep outer ring, reset inner grid to only 1
+            self.initialize_level_3()
     
     def is_valid_placement(self, row: int, col: int) -> bool:
         """Check if a placement is valid (not checking number sequence)."""
@@ -925,21 +939,22 @@ class GameGUI:
         # Initialize game
         self.game_board.initialize_level_1()
         
-    def create_buttons(self):
-        """Create UI buttons."""
-        button_y = WINDOW_HEIGHT - 80
-        spacing = BUTTON_WIDTH + 10
-        # 7 buttons total (New, Clear, Undo, Level 2, Hint, Solution, Top 10)
-        start_x = (WINDOW_WIDTH - (spacing * 7 - 10)) // 2
+        def create_buttons(self):
+            """Create UI buttons."""
+            button_y = WINDOW_HEIGHT - 80
+            spacing = BUTTON_WIDTH + 10
 
-        self.new_game_btn = Button(start_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "New Game", GREEN)
-        self.clear_btn = Button(start_x + spacing, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Clear", YELLOW)
-        self.undo_btn = Button(start_x + spacing * 2, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Undo", BLUE)
-        self.level2_btn = Button(start_x + spacing * 3, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 2", RED)
-        self.hint_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Hint", BLUE)
-        self.solution_btn = Button(start_x + spacing * 5, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Solution", ORANGE)
-        self.leaderboard_btn = Button(start_x + spacing * 6, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
-        
+            # 8 buttons total
+            start_x = (WINDOW_WIDTH - (spacing * 8 - 10)) // 2
+
+            self.new_game_btn = Button(start_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "New Game", GREEN)
+            self.clear_btn = Button(start_x + spacing, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Clear", YELLOW)
+            self.undo_btn = Button(start_x + spacing * 2, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Undo", BLUE)
+            self.level2_btn = Button(start_x + spacing * 3, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 2", RED)
+            self.level3_btn = Button(start_x + spacing * 4, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Level 3", RED)
+            self.hint_btn = Button(start_x + spacing * 5, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Hint", BLUE)
+            self.solution_btn = Button(start_x + spacing * 6, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Solution", ORANGE)
+            self.leaderboard_btn = Button(start_x + spacing * 7, button_y, BUTTON_WIDTH, BUTTON_HEIGHT, "Top 10", BLUE)
     def draw_board(self):
         """Draw the game board (inner 5x5 and outer ring for Level 2)."""
         # Highlight last placed position in Level 1
@@ -979,7 +994,7 @@ class GameGUI:
                     self.screen.blit(text, text_rect)
         
         # Draw outer ring for Level 2
-        if self.game_board.level == 2:
+        if self.game_board.level >= 2:
             self.draw_outer_ring()
     
     def draw_outer_ring(self):
@@ -1060,6 +1075,7 @@ class GameGUI:
         self.clear_btn.draw(self.screen, self.font_small)
         self.undo_btn.draw(self.screen, self.font_small)
         self.level2_btn.draw(self.screen, self.font_small)
+        self.level3_btn.draw(self.screen, self.font_small)
         self.hint_btn.draw(self.screen, self.font_small)
         self.solution_btn.draw(self.screen, self.font_small)
         self.leaderboard_btn.draw(self.screen, self.font_small)
@@ -1109,7 +1125,7 @@ class GameGUI:
                             self.message = msg
                             self.message_color = RED
                         return
-        elif self.game_board.level == 2:
+        elif self.game_board.level >= 2:
             # In Level 2, clicking inner board does nothing
             for row in range(5):
                 for col in range(5):
@@ -1123,7 +1139,7 @@ class GameGUI:
                         return
         
         # Check outer ring for Level 2
-        if self.game_board.level == 2:
+        if self.game_board.level >= 2:
             # Calculate outer ring cell positions
             ring_positions = self._get_ring_positions()
             
@@ -1145,7 +1161,7 @@ class GameGUI:
                             self.level_complete = True
                             time_msg = self._apply_time_score()
                             self.sound_manager.play_success_sound()
-                            self.message = f"Level 2 Complete! Final Score: {self.game_board.score}{time_msg}"
+                            self.message = f"Level 2 Complete! Click Level 3 to continue. Final Score: {self.game_board.score}{time_msg}"
                             self.message_color = BLUE
                             self.game_board.save_game_log()
                             self._add_leaderboard_entry()
@@ -1337,7 +1353,6 @@ class GameGUI:
         else:
             self.message = "Already in Level 2!"
             self.message_color = RED
-
     def handle_solution(self):
         """Show a full solution for the current level (User Story 13)."""
         if self.game_board.showing_solution:
@@ -1347,6 +1362,17 @@ class GameGUI:
         success, msg = self.game_board.solve_and_display()
         self.message = msg
         self.message_color = GREEN if success else RED
+
+    def handle_level_3(self):
+        """Activate Level 3."""
+        if self.game_board.level == 2 and self.game_board.is_level_complete():
+            self.game_board.initialize_level_3()
+            self._reset_timer()
+            self.message = "Level 3 started! Fill numbers 2-25 in the inner grid."
+            self.message_color = GREEN
+        else:
+            self.message = "Complete Level 2 first!"
+            self.message_color = RED
 
     def _toggle_hints(self):
         """Toggle display of valid Level 1 moves."""
@@ -1368,6 +1394,8 @@ class GameGUI:
                 self.handle_undo()
             if self.level2_btn.handle_event(event):
                 self.handle_level_2()
+            if self.level3_btn.handle_event(event):
+                self.handle_level_3()
             if self.leaderboard_btn.handle_event(event):
                 self._toggle_leaderboard()
             if self.hint_btn.handle_event(event):
